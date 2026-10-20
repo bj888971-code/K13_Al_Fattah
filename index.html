@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapor Mid K13 Madrasah</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+  [x-cloak]{display:none!important}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .kertas{font-family:"Times New Roman",serif;font-size:11pt}
+  .kertas table{border-collapse:collapse;width:100%}
+  .kertas th,.kertas td{border:1px solid #000;padding:3px 6px;vertical-align:top}
+  input.n{width:4.2rem;text-align:center}
+  @media print{
+    .no-print{display:none!important}
+    body{background:#fff}
+    .kertas{box-shadow:none!important;margin:0!important;width:auto!important}
+  }
+</style>
+</head>
+<body class="bg-stone-100 text-stone-900" x-data="app()">
+
+<!-- LOGIN -->
+<div x-show="!user" x-cloak class="min-h-screen grid place-items-center p-4">
+  <div class="bg-white rounded-lg shadow p-6 w-full max-w-sm space-y-3">
+    <h1 class="text-xl font-semibold text-emerald-900">Rapor Mid Semester K13</h1>
+    <p class="text-sm text-stone-500">Masuk dengan username dan password dari operator madrasah.</p>
+    <input class="border rounded w-full p-2" placeholder="Username" x-model="f.username" @keyup.enter="login()">
+    <input class="border rounded w-full p-2" type="password" placeholder="Password" x-model="f.password" @keyup.enter="login()">
+    <button class="bg-emerald-800 text-white rounded w-full p-2 disabled:opacity-60" :disabled="loading" @click="login()" x-text="loading?'Memproses…':'Masuk'"></button>
+    <p class="text-sm text-red-700" x-text="err"></p>
+  </div>
+</div>
+
+<!-- APLIKASI -->
+<div x-show="user" x-cloak>
+  <header class="no-print bg-emerald-900 text-white px-4 py-2 flex flex-wrap items-center gap-4">
+    <b>Rapor Mid K13</b>
+    <span class="text-emerald-200 text-sm" x-text="(meta.ta?meta.ta.semester+' '+meta.ta.tahun:'')"></span>
+    <nav class="flex gap-2 ml-4 text-sm">
+      <button x-show="user && user.role!=='siswa'" class="px-3 py-1 rounded" :class="view==='nilai'?'bg-white text-emerald-900':'hover:bg-emerald-800'" @click="view='nilai'">Input Nilai</button>
+      <button x-show="user && user.role==='admin'" class="px-3 py-1 rounded" :class="view==='admin'?'bg-white text-emerald-900':'hover:bg-emerald-800'" @click="view='admin'; if(!tabel) bukaTabel('sekolah')">Master Data</button>
+      <button x-show="user && (user.role==='wali'||user.role==='admin'||user.role==='siswa')" class="px-3 py-1 rounded" :class="view==='rapor'?'bg-white text-emerald-900':'hover:bg-emerald-800'" @click="view='rapor'">Rapor</button>
+    </nav>
+    <span class="ml-auto text-sm" x-text="user?user.nama:''"></span>
+    <button class="text-sm underline" @click="logout()">Keluar</button>
+  </header>
+
+  <p class="no-print mx-4 mt-3 text-sm text-red-700" x-text="err"></p>
+  <p class="no-print mx-4 mt-3 text-sm text-emerald-800" x-text="msg"></p>
+
+  <!-- GRID INPUT NILAI -->
+  <main x-show="view==='nilai'" class="no-print p-4 space-y-3">
+    <div class="flex flex-wrap gap-2 items-center">
+      <select class="border rounded p-2 bg-white" x-model="sel" @change="loadGrid()">
+        <option value="">Pilih mata pelajaran dan kelas</option>
+        <template x-for="(p,i) in meta.pengampu" :key="i"><option :value="i" x-text="p.mapel+' — '+p.rombel"></option></template>
+      </select>
+      <template x-if="g"><span class="text-sm text-stone-600">KKM <b x-text="g.kkm.kkm"></b> · bobot PH <b x-text="g.cfg.bobot_ph"></b>% : PTS <b x-text="g.cfg.bobot_pts"></b>%</span></template>
+      <button x-show="g" class="ml-auto bg-emerald-800 text-white rounded px-4 py-2" @click="simpan()">Simpan nilai</button>
+    </div>
+    <p x-show="!g" class="text-stone-500">Pilih mata pelajaran dan kelas untuk mulai mengisi nilai.</p>
+    <div x-show="g" class="overflow-x-auto bg-white rounded shadow">
+      <table class="w-full text-sm">
+        <thead class="bg-stone-200 text-left"><tr>
+          <th class="p-2">No</th><th class="p-2">Nama siswa</th>
+          <th class="p-2">PH 1</th><th class="p-2">PH 2</th><th class="p-2">PH 3</th><th class="p-2">PTS</th>
+          <th class="p-2">Nilai mid</th><th class="p-2">Predikat</th>
+          <th class="p-2">KD tertinggi</th><th class="p-2">KD terendah</th></tr></thead>
+        <tbody>
+          <template x-for="(r,i) in rows" :key="r.siswa_id">
+            <tr class="border-t">
+              <td class="p-2" x-text="i+1"></td><td class="p-2 whitespace-nowrap" x-text="r.nama"></td>
+              <template x-for="k in ['ph1','ph2','ph3','pts']"><td class="p-1">
+                <input class="n border rounded p-1" type="number" min="0" max="100" x-model="r[k]"
+                  @keydown.enter.prevent="$event.target.closest('tr').nextElementSibling?.querySelectorAll('input.n')[['ph1','ph2','ph3','pts'].indexOf(k)]?.focus()">
+              </td></template>
+              <td class="p-2 font-semibold" x-text="hit(r).akhir ?? ''"></td>
+              <td class="p-2" :class="hit(r).pred==='D'?'text-red-700 font-semibold':''" x-text="hit(r).pred ?? ''"></td>
+              <td class="p-1"><select class="border rounded p-1 w-32" x-model="r.kd_tertinggi_id"><option value="">—</option><template x-for="d in g.kd"><option :value="d.id" x-text="d.kode"></option></template></select></td>
+              <td class="p-1"><select class="border rounded p-1 w-32" x-model="r.kd_terendah_id"><option value="">—</option><template x-for="d in g.kd"><option :value="d.id" x-text="d.kode"></option></template></select></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- MASTER DATA (admin) -->
+  <main x-show="view==='admin'" class="no-print p-4 space-y-3">
+    <div class="flex flex-wrap gap-1">
+      <template x-for="t in tabelAdmin" :key="t"><button class="px-3 py-1 rounded border text-sm" :class="tabel===t?'bg-emerald-800 text-white':'bg-white'" @click="bukaTabel(t)" x-text="t.replace('_',' ')"></button></template>
+    </div>
+    <div x-show="adm" class="grid lg:grid-cols-3 gap-3">
+      <div class="lg:col-span-2 overflow-x-auto bg-white rounded shadow max-h-[70vh]">
+        <table class="w-full text-sm">
+          <thead class="bg-stone-200 text-left sticky top-0"><tr>
+            <template x-for="c in kolTampil()" :key="c"><th class="p-2 whitespace-nowrap" x-text="c"></th></template><th class="p-2"></th></tr></thead>
+          <tbody>
+            <template x-for="row in (adm?adm.data:[])" :key="row.id">
+              <tr class="border-t">
+                <template x-for="c in kolTampil()" :key="c"><td class="p-2" x-text="cell(c,row[c])"></td></template>
+                <td class="p-2 whitespace-nowrap"><button class="text-emerald-800 underline mr-2" @click="form={...row}; delete form.password_hash">Ubah</button><button class="text-red-700 underline" @click="hapusRow(row.id)">Hapus</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <p class="p-3 text-stone-500 text-sm" x-show="adm && !adm.data.length">Belum ada data. Isi formulir di samping lalu simpan.</p>
+      </div>
+      <form x-show="adm" class="bg-white rounded shadow p-3 space-y-2 h-fit" @submit.prevent="simpanRow()">
+        <div class="font-semibold" x-text="form.id?'Ubah data':'Tambah data'"></div>
+        <template x-for="c in kolForm()" :key="c">
+          <label class="block text-sm"><span x-text="c"></span>
+            <template x-if="adm && adm.ref[c]"><select class="border rounded p-1 w-full" x-model="form[c]"><option value="">—</option><template x-for="o in (adm?adm.ref[c]:[])"><option :value="o.id" x-text="o.label"></option></template></select></template>
+            <template x-if="adm && !adm.ref[c] && ENUM[c]"><select class="border rounded p-1 w-full" x-model="form[c]"><option value="">—</option><template x-for="o in ENUM[c]"><option :value="o" x-text="o"></option></template></select></template>
+            <template x-if="adm && !adm.ref[c] && !ENUM[c]"><input class="border rounded p-1 w-full" x-model="form[c]"></template>
+          </label>
+        </template>
+        <label class="block text-sm" x-show="tabel==='users'">password <span class="text-stone-500" x-text="form.id?'(kosongkan jika tidak diganti)':''"></span><input type="password" class="border rounded p-1 w-full" x-model="form.password"></label>
+        <div class="flex gap-2"><button class="bg-emerald-800 text-white rounded px-4 py-2">Simpan data</button><button type="button" class="border rounded px-3 py-2" @click="form={}">Kosongkan</button></div>
+      </form>
+    </div>
+  </main>
+
+  <!-- RAPOR -->
+  <main x-show="view==='rapor'" class="p-4 space-y-3">
+    <div class="no-print flex flex-wrap gap-2 items-center" x-show="user && user.role!=='siswa'">
+      <select class="border rounded p-2 bg-white" x-model="rb" @change="loadSiswa()">
+        <option value="">Pilih kelas</option>
+        <template x-for="x in meta.rombel_wali" :key="x.id"><option :value="x.id" x-text="x.nama"></option></template>
+      </select>
+      <select class="border rounded p-2 bg-white" x-model="sid" @change="loadRapor()">
+        <option value="">Pilih siswa</option>
+        <template x-for="s in daftarSiswa" :key="s.id"><option :value="s.id" x-text="s.nama"></option></template>
+      </select>
+    </div>
+    <div class="no-print flex flex-wrap gap-2 items-center" x-show="r">
+      <select class="border rounded p-2 bg-white" x-model="paper"><option value="210mm 297mm">A4</option><option value="215mm 330mm">F4</option></select>
+      <button class="bg-emerald-800 text-white rounded px-4 py-2" @click="cetak()">Cetak / simpan PDF</button>
+    </div>
+
+    <!-- absensi + catatan (wali/admin) -->
+    <template x-if="r && user.role!=='siswa'"><div class="no-print bg-white rounded shadow p-3 grid sm:grid-cols-5 gap-2 items-end">
+      <label class="text-sm">Sakit<input class="border rounded p-1 w-full" type="number" min="0" x-model="r.cat.sakit"></label>
+      <label class="text-sm">Izin<input class="border rounded p-1 w-full" type="number" min="0" x-model="r.cat.izin"></label>
+      <label class="text-sm">Tanpa keterangan<input class="border rounded p-1 w-full" type="number" min="0" x-model="r.cat.alfa"></label>
+      <label class="text-sm sm:col-span-2">Catatan wali kelas<input class="border rounded p-1 w-full" x-model="r.cat.catatan"></label>
+      <button class="bg-emerald-800 text-white rounded px-3 py-2 sm:col-span-5 sm:w-48" @click="simpanWali()">Simpan absensi &amp; catatan</button>
+    </div></template>
+
+    <!-- lembar rapor -->
+    <article x-show="r" class="kertas bg-white shadow mx-auto p-8" style="width:210mm;min-height:297mm">
+      <template x-if="r">
+        <div>
+          <div class="text-center border-b-4 border-double border-black pb-2 mb-3">
+            <div class="font-bold text-base uppercase" x-text="r.sekolah.nama"></div>
+            <div class="text-xs" x-text="'NSM '+r.sekolah.nsm+' · NPSN '+r.sekolah.npsn"></div>
+            <div class="text-xs" x-text="r.sekolah.alamat"></div>
+          </div>
+          <div class="text-center font-bold mb-3">LAPORAN HASIL PENILAIAN TENGAH SEMESTER</div>
+          <table class="!border-0 mb-3 text-sm" style="border:0">
+            <tr><td style="border:0;width:25%">Nama</td><td style="border:0" x-text="': '+r.siswa.nama"></td><td style="border:0;width:20%">Kelas</td><td style="border:0" x-text="': '+r.rombel.nama"></td></tr>
+            <tr><td style="border:0">NIS / NISN</td><td style="border:0" x-text="': '+r.siswa.nis+' / '+r.siswa.nisn"></td><td style="border:0">Semester</td><td style="border:0" x-text="': '+r.ta.semester"></td></tr>
+            <tr><td style="border:0"></td><td style="border:0"></td><td style="border:0">Tahun ajaran</td><td style="border:0" x-text="': '+r.ta.tahun"></td></tr>
+          </table>
+          <table class="text-sm">
+            <thead><tr class="text-center bg-stone-100"><th>No</th><th>Mata pelajaran</th><th>KKM</th><th>Nilai</th><th>Predikat</th><th>Deskripsi capaian</th></tr></thead>
+            <tbody>
+              <template x-for="(n,i) in r.nilai" :key="n.id">
+                <tr>
+                  <td class="text-center" x-text="i+1"></td><td x-text="n.mapel"></td>
+                  <td class="text-center" x-text="n.kkm"></td><td class="text-center" x-text="Math.round(n.nilai_akhir)"></td>
+                  <td class="text-center" x-text="n.predikat"></td><td class="text-xs" x-text="n.deskripsi"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <table class="text-sm mt-3" style="width:55%">
+            <tr><th colspan="2">Ketidakhadiran</th></tr>
+            <tr><td>Sakit</td><td x-text="r.cat.sakit+' hari'"></td></tr>
+            <tr><td>Izin</td><td x-text="r.cat.izin+' hari'"></td></tr>
+            <tr><td>Tanpa keterangan</td><td x-text="r.cat.alfa+' hari'"></td></tr>
+          </table>
+          <div class="border border-black mt-3 p-2 text-sm"><b>Catatan wali kelas</b><div x-text="r.cat.catatan||'-'"></div></div>
+          <div class="grid grid-cols-3 text-center text-sm mt-8 gap-2">
+            <div>Mengetahui,<br>Orang tua/wali<div style="height:60px"></div>(........................)</div>
+            <div>&nbsp;<br>Wali kelas<div style="height:60px"></div><u x-text="r.wali.nama"></u><br><span x-text="'NIP. '+(r.wali.nip||'-')"></span></div>
+            <div>&nbsp;<br>Kepala madrasah<div style="height:60px"></div><u x-text="r.sekolah.kepala"></u><br><span x-text="'NIP. '+(r.sekolah.nip_kepala||'-')"></span></div>
+          </div>
+        </div>
+      </template>
+    </article>
+  </main>
+</div>
+
+<style id="pg">@page{size:210mm 297mm;margin:10mm}</style>
+<script>
+// >>> TEMPEL URL WEB APP APPS SCRIPT (berakhiran /exec) DI BAWAH INI <<<
+const API_URL = 'https://script.google.com/macros/s/AKfycbwqCU9pfvgkamfbStAFBFN9mJS88ZdfH5tOanGVEC6BnfyMTVHTjgqem8oBrtE3nROo/exec';
+
+function app() { return {
+  token: (() => { try { return localStorage.getItem('rmk13') || ''; } catch (e) { return ''; } })(), user: null, view: 'nilai', err: '', msg: '',
+  f: { username: '', password: '' }, meta: { pengampu: [], rombel_wali: [] },
+  loading: false, sel: '', g: null, rows: [], rb: '', sid: '', daftarSiswa: [], r: null, paper: '210mm 297mm',
+  tabelAdmin: ['sekolah','tahun_ajaran','users','rombel','siswa','mapel','pengampu','kkm','kd'], tabel: '', adm: null, form: {},
+  ENUM: { role: ['admin','guru','wali','siswa'], kelompok: ['A','B','C','PAI','MULOK'], semester: ['Ganjil','Genap'], jk: ['L','P'], aktif: ['TRUE','FALSE'] },
+
+  async api(action, p = {}) {
+    if (!API_URL || API_URL.includes('GANTI_DENGAN')) { this.err = 'API_URL di index.html belum diisi dengan URL Web App Apps Script (berakhiran /exec).'; throw new Error(this.err); }
+    let j;
+    try {
+      const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, token: this.token, ...p }) }); // tanpa header agar tidak kena preflight CORS
+      const txt = await res.text();
+      try { j = JSON.parse(txt); }
+      catch (e) { throw new Error('Server mengirim respons yang bukan JSON. Biasanya akses deployment bukan "Anyone", URL bukan /exec, atau ada error di Code.gs (lihat menu Executions di Apps Script).'); }
+    } catch (e) {
+      this.err = (e instanceof TypeError) ? 'Tidak bisa terhubung ke server. Periksa koneksi internet dan pastikan API_URL benar dan deployment berakses "Anyone".' : e.message;
+      throw e;
+    }
+    if (!j.ok) { this.err = j.error; if (j.error === 'Sesi habis') this.logout(); throw new Error(j.error); }
+    this.err = ''; return j.data;
+  },
+  async init() { if (this.token) { try { await this.start(); } catch (e) {} } },
+  async login() {
+    if (!this.f.username || !this.f.password) { this.err = 'Isi username dan password.'; return; }
+    this.loading = true;
+    try { const d = await this.api('login', { username: this.f.username.trim(), password: this.f.password }); this.token = d.token; try { localStorage.setItem('rmk13', d.token); } catch (e) {} await this.start(); }
+    catch (e) { /* pesan sudah tampil lewat this.err */ }
+    finally { this.loading = false; }
+  },
+  async start() {
+    this.meta = await this.api('meta'); this.user = this.meta.user;
+    this.view = this.user.role === 'siswa' ? 'rapor' : 'nilai';
+    if (this.user.role === 'siswa') { this.sid = this.user.siswa_id; this.loadRapor(); }
+  },
+  logout() { localStorage.removeItem('rmk13'); this.token = ''; this.user = null; this.g = null; this.r = null; },
+
+  // ---- Grid nilai ----
+  async loadGrid() {
+    this.g = null; this.msg = ''; if (this.sel === '') return;
+    const p = this.meta.pengampu[this.sel], d = await this.api('grid', { rombel_id: p.rombel_id, mapel_id: p.mapel_id });
+    this.g = d;
+    this.rows = d.siswa.map(s => { const n = d.nilai.find(x => String(x.siswa_id) === String(s.id)) || {};
+      return { siswa_id: s.id, nama: s.nama, ph1: n.ph1 ?? '', ph2: n.ph2 ?? '', ph3: n.ph3 ?? '', pts: n.pts ?? '',
+               kd_tertinggi_id: n.kd_tertinggi_id ?? '', kd_terendah_id: n.kd_terendah_id ?? '' }; });
+  },
+  hit(r) {   // rumus sama dengan backend: (rata PH × bobot PH + PTS × bobot PTS) / total bobot
+    const ph = [r.ph1, r.ph2, r.ph3].filter(v => v !== '' && v !== null).map(Number), pts = r.pts === '' ? null : Number(r.pts);
+    if (!ph.length && pts === null) return {};
+    const rata = ph.length ? ph.reduce((a, b) => a + b, 0) / ph.length : 0, bp = +this.g.cfg.bobot_ph, bt = +this.g.cfg.bobot_pts;
+    const a = Math.round((rata * bp + (pts || 0) * bt) / (bp + bt) * 100) / 100, k = this.g.kkm;
+    return { akhir: a, pred: a >= k.a_min ? 'A' : a >= k.b_min ? 'B' : a >= k.c_min ? 'C' : 'D' };
+  },
+  async simpan() {
+    const p = this.meta.pengampu[this.sel];
+    try { await this.api('saveNilai', { rombel_id: p.rombel_id, mapel_id: p.mapel_id, rows: this.rows }); this.msg = 'Nilai tersimpan.'; await this.loadGrid(); } catch (e) {}
+  },
+
+  // ---- Master data (admin) ----
+  async bukaTabel(t) { this.tabel = t; this.form = {}; this.adm = null; this.adm = await this.api('adminList', { tabel: t }); },
+  kolTampil() { return !this.adm ? [] : this.adm.kolom.filter(c => c !== 'id' && c !== 'password_hash'); },
+  kolForm() { return this.kolTampil(); },
+  cell(c, v) { const o = ((this.adm && this.adm.ref[c]) || []).find(x => String(x.id) === String(v)); return o ? o.label : v; },
+  async simpanRow() { try { await this.api('adminSave', { tabel: this.tabel, row: this.form }); this.msg = 'Data tersimpan.'; await this.bukaTabel(this.tabel); } catch (e) {} },
+  async hapusRow(id) { if (!confirm('Hapus data ini?')) return; try { await this.api('adminDelete', { tabel: this.tabel, id }); await this.bukaTabel(this.tabel); } catch (e) {} },
+
+  // ---- Rapor ----
+  async loadSiswa() { this.sid = ''; this.r = null; if (!this.rb) return;
+    const d = await this.api('legger', { rombel_id: this.rb }); this.daftarSiswa = d.siswa; },
+  async loadRapor() { this.r = null; if (!this.sid) return; try { this.r = await this.api('rapor', { siswa_id: this.sid }); } catch (e) {} },
+  async simpanWali() { try { await this.api('saveWali', { siswa_id: this.sid, ...this.r.cat }); this.msg = 'Absensi dan catatan tersimpan.'; } catch (e) {} },
+  cetak() { document.getElementById('pg').textContent = '@page{size:' + this.paper + ';margin:10mm}'; window.print(); },
+}}
+</script>
+</body>
+</html>
